@@ -1,0 +1,13 @@
+{
+  "private": true,
+  "name": "queue-pruner",
+  "version": "0.0.0",
+  "license": "BSD-3-Clause",
+  "type": "module",
+  "dependencies": {
+    "@devvit/public-api": "0.11.19"
+  },
+  "devDependencies": {
+    "typescript": "5.8.3"
+  }
+}

@@ -3,6 +3,7 @@ import { CronExpressionParser } from "cron-parser";
 import { addSeconds } from "date-fns";
 import { uniq } from "lodash";
 import { CHECK_QUEUE_CRON, ScheduledJob } from "./constants.js";
+import { AppSetting } from "./settings.js";
 
 const USER_QUEUE_KEY = "userQueue";
 const REMOVE_QUEUE = "removeQueue";
@@ -14,11 +15,24 @@ export async function checkQueue (_: unknown, context: JobContext) {
         limit: 1000,
     }).all();
 
-    // Remove items from deleted users
-    const itemsToRemove = modQueue.filter(item => item.authorName === "[deleted]");
-    if (itemsToRemove.length > 0) {
-        await Promise.all(itemsToRemove.map(item => context.reddit.remove(item.id, false)));
-        console.log(`Check step: Removed ${itemsToRemove.length} item(s) from the mod queue due to deleted users.`);
+    if (modQueue.length === 0) {
+        console.log("Check step: No items in the mod queue.");
+        return;
+    }
+
+    const settings = await context.settings.getAll();
+
+    if (settings[AppSetting.RemoveDeleted]) {
+        // Remove items from deleted users
+        const itemsToRemove = modQueue.filter(item => item.authorName === "[deleted]");
+        if (itemsToRemove.length > 0) {
+            await Promise.all(itemsToRemove.map(item => context.reddit.remove(item.id, false)));
+            console.log(`Check step: Removed ${itemsToRemove.length} item(s) from the mod queue due to deleted users.`);
+        }
+    }
+
+    if (!settings[AppSetting.RemoveShadowbanned]) {
+        return;
     }
 
     const usersToQueue = uniq(modQueue

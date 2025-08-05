@@ -10,12 +10,12 @@ export const appSettings: SettingsFormField[] = [
         name: AppSetting.RemoveDeleted,
         type: "boolean",
         defaultValue: true,
-        label: "Remove content for deleted Users",
+        label: "Remove modqueued content for deleted users",
     },
     {
         name: AppSetting.RemoveShadowbanned,
         type: "boolean",
         defaultValue: true,
-        label: "Remove content for suspended and shadowbanned users",
+        label: "Remove modqueued content for suspended and shadowbanned users",
     },
 ];

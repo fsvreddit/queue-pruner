@@ -4,4 +4,4 @@ export enum ScheduledJob {
     RemoveUsers = "removeUsers",
 }
 
-export const PRUNE_USERS_CRON = "1/5 * * * *";
+export const CHECK_QUEUE_CRON = "0/5 * * * *";

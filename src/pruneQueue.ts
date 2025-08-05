@@ -2,7 +2,7 @@ import { JobContext, JSONObject, ScheduledJobEvent } from "@devvit/public-api";
 import { CronExpressionParser } from "cron-parser";
 import { addSeconds } from "date-fns";
 import { uniq } from "lodash";
-import { PRUNE_USERS_CRON, ScheduledJob } from "./constants.js";
+import { CHECK_QUEUE_CRON, ScheduledJob } from "./constants.js";
 
 const USER_QUEUE_KEY = "userQueue";
 const REMOVE_QUEUE = "removeQueue";
@@ -39,8 +39,19 @@ export async function checkQueue (_: unknown, context: JobContext) {
     const existingUsers = new Set(existingQueue.map(user => user.member));
     const newUsers = usersToQueue.filter(user => !existingUsers.has(user));
 
+    if (newUsers.length === 0) {
+        console.log("No new users to add to the queue.");
+        return;
+    }
+
     await context.redis.zAdd(USER_QUEUE_KEY, ...newUsers.map(user => ({ member: user, score: Date.now() })));
     console.log(`Added ${newUsers.length} new user(s) to the queue.`);
+
+    await context.scheduler.runJob({
+        name: ScheduledJob.PruneUsers,
+        runAt: addSeconds(new Date(), 5),
+        data: { runRemove: false },
+    });
 }
 
 export async function userIsActive (username: string, context: JobContext): Promise<boolean> {
@@ -88,7 +99,7 @@ export async function pruneUsers (event: ScheduledJobEvent<JSONObject | undefine
 
     if (queue.length > 0) {
         console.log(`There are still ${queue.length} users left in the queue.`);
-        const nextRun = CronExpressionParser.parse(PRUNE_USERS_CRON).next().toDate();
+        const nextRun = CronExpressionParser.parse(CHECK_QUEUE_CRON).next().toDate();
         if (nextRun < addSeconds(new Date(), 45)) {
             console.log("Next run is immminent, not scheduling another job.");
         } else {

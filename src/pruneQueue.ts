@@ -14,26 +14,16 @@ export async function checkQueue (_: unknown, context: JobContext) {
         limit: 1000,
     }).all();
 
-    if (modQueue.length === 0) {
-        console.log("No items in the mod queue to process.");
-        return;
-    }
-
     // Remove items from deleted users
     const itemsToRemove = modQueue.filter(item => item.authorName === "[deleted]");
     if (itemsToRemove.length > 0) {
         await Promise.all(itemsToRemove.map(item => context.reddit.remove(item.id, false)));
-        console.log(`Removed ${itemsToRemove.length} item(s) from the mod queue due to deleted users.`);
+        console.log(`Check step: Removed ${itemsToRemove.length} item(s) from the mod queue due to deleted users.`);
     }
 
     const usersToQueue = uniq(modQueue
         .filter(item => item.authorName && item.authorName !== "[deleted]")
         .map(item => item.authorName));
-
-    if (usersToQueue.length === 0) {
-        console.log("No valid users found in the mod queue.");
-        return;
-    }
 
     const existingQueue = await context.redis.zRange(USER_QUEUE_KEY, 0, -1);
     const existingUsers = new Set(existingQueue.map(user => user.member));
@@ -45,7 +35,7 @@ export async function checkQueue (_: unknown, context: JobContext) {
     }
 
     await context.redis.zAdd(USER_QUEUE_KEY, ...newUsers.map(user => ({ member: user, score: Date.now() })));
-    console.log(`Added ${newUsers.length} new user(s) to the queue.`);
+    console.log(`Check step: Added ${newUsers.length} new user(s) to the queue.`);
 
     await context.scheduler.runJob({
         name: ScheduledJob.PruneUsers,
@@ -71,7 +61,6 @@ export async function pruneUsers (event: ScheduledJobEvent<JSONObject | undefine
     const queue = await context.redis.zRange(USER_QUEUE_KEY, 0, -1);
 
     if (queue.length === 0) {
-        console.log("No users in the queue to prune.");
         return;
     }
 
@@ -89,26 +78,24 @@ export async function pruneUsers (event: ScheduledJobEvent<JSONObject | undefine
         processed++;
 
         if (!isActive) {
+            console.log(`Prune step: User ${user.member} is inactive, adding to remove queue.`);
             await context.redis.zAdd(REMOVE_QUEUE, { member: user.member, score: Date.now() });
             runRemove = true;
         }
     }
 
     await context.redis.zRem(USER_QUEUE_KEY, processedUsers);
-    console.log(`Processed ${processed} user(s) in the prune job.`);
+    console.log(`Prune step: Processed ${processed} user(s) in the prune job.`);
 
-    if (queue.length > 0) {
-        console.log(`There are still ${queue.length} users left in the queue.`);
-        const nextRun = CronExpressionParser.parse(CHECK_QUEUE_CRON).next().toDate();
-        if (nextRun < addSeconds(new Date(), 45)) {
-            console.log("Next run is immminent, not scheduling another job.");
-        } else {
-            await context.scheduler.runJob({
-                name: ScheduledJob.PruneUsers,
-                runAt: addSeconds(new Date(), 5),
-                data: { runRemove },
-            });
-        }
+    const nextRun = CronExpressionParser.parse(CHECK_QUEUE_CRON).next().toDate();
+    if (queue.length > 0 && nextRun > addSeconds(new Date(), 45)) {
+        console.log(`Prune step: There are still ${queue.length} user(s) left in the queue.`);
+
+        await context.scheduler.runJob({
+            name: ScheduledJob.PruneUsers,
+            runAt: addSeconds(new Date(), 5),
+            data: { runRemove },
+        });
     } else {
         if (runRemove) {
             await context.scheduler.runJob({
@@ -123,7 +110,6 @@ export async function removeUsers (_: unknown, context: JobContext) {
     const removeQueue = await context.redis.zRange(REMOVE_QUEUE, 0, -1);
 
     if (removeQueue.length === 0) {
-        console.log("No users to remove.");
         return;
     }
 
@@ -134,11 +120,12 @@ export async function removeUsers (_: unknown, context: JobContext) {
     }).all();
 
     const itemsToRemove = modQueue.filter(item => removeQueue.some(user => user.member === item.authorName));
-    if (itemsToRemove.length === 0) {
-        console.log("No items to remove from the mod queue.");
-        return;
+    if (itemsToRemove.length > 0) {
+        await Promise.all(itemsToRemove.map(item => context.reddit.remove(item.id, false)));
+        console.log(`Remove step: Removed ${itemsToRemove.length} item(s) from the mod queue for shadowbanned or suspended users.`);
+    } else {
+        console.log("Remove step: No items found in the mod queue for users to remove.");
     }
 
-    await Promise.all(itemsToRemove.map(item => context.reddit.remove(item.id, false)));
-    console.log(`Removed ${itemsToRemove.length} item(s) from the mod queue for shadowbanned or suspended users.`);
+    await context.redis.zRem(REMOVE_QUEUE, removeQueue.map(user => user.member));
 }

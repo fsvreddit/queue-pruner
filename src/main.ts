@@ -2,6 +2,9 @@ import { Devvit } from "@devvit/public-api";
 import { ScheduledJob } from "./constants.js";
 import { handleInstallOrUpgrade } from "./installActions.js";
 import { checkQueue, pruneUsers, removeUsers } from "./pruneQueue.js";
+import { appSettings } from "./settings.js";
+
+Devvit.addSettings(appSettings);
 
 Devvit.addTrigger({
     events: ["AppInstall", "AppUpgrade"],

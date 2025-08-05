@@ -96,13 +96,11 @@ export async function pruneUsers (event: ScheduledJobEvent<JSONObject | undefine
             runAt: addSeconds(new Date(), 5),
             data: { runRemove },
         });
-    } else {
-        if (runRemove) {
-            await context.scheduler.runJob({
-                name: ScheduledJob.RemoveUsers,
-                runAt: addSeconds(new Date(), 5),
-            });
-        }
+    } else if (runRemove) {
+        await context.scheduler.runJob({
+            name: ScheduledJob.RemoveUsers,
+            runAt: addSeconds(new Date(), 5),
+        });
     }
 }
 

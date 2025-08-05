@@ -36,7 +36,7 @@ export async function checkQueue (_: unknown, context: JobContext) {
     }
 
     const usersToQueue = uniq(modQueue
-        .filter(item => item.authorName && item.authorName !== "[deleted]")
+        .filter(item => item.authorName !== "[deleted]")
         .map(item => item.authorName));
 
     const existingQueue = await context.redis.zRange(USER_QUEUE_KEY, 0, -1);

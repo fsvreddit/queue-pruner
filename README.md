@@ -1,23 +1,13 @@
-# Getting started with queue-pruner
+This app checks the modqueue every five minutes. If there are any posts or comments in the queue for shadowbanned, suspended or deleted users, the post or comment will be removed if configured to do so.
 
-Your project has been created using a Devvit template.
+The app can be configured to remove posts or comments for deleted users or shadowbanned/suspended users - both options can be controlled independently.
 
-## Next up
+## Change History
 
-Next up is uploading and developing your app using playtest.
+### v1.0.0
 
-In the project directory, you can run:
+* Initial Release
 
-### `devvit upload`
+## About this app
 
-Upload the app to the App Directory. Uploaded apps are only visible to you (the app owner) and can only be installed to a small test subreddit with less than 200 subscribers.
-
-### `devvit playtest <subreddit-name>`
-
-Installs your app to your test subreddit and starts a playtest session where a new version is installed whenever you save changes to your app code, and logs are continuously streamed.
-
-## Learn more
-
-You can learn more in the [documentation](https://developers.reddit.com/docs/).
-
-You can manage your apps in the [developer portal](https://developers.reddit.com/my/apps).
+Modqueue Pruner is open source. You can find the source [here](https://github.com/fsvreddit/queue-pruner).

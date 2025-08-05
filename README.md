@@ -1,10 +1,8 @@
-This app checks the modqueue every five minutes. If there are any posts or comments in the queue for shadowbanned, suspended or deleted users, the post or comment will be removed if configured to do so.
-
-The app can be configured to remove posts or comments for deleted users or shadowbanned/suspended users - both options can be controlled independently.
+This app checks the modqueue every five minutes. If there are any posts or comments in the queue for shadowbanned or suspended, the post or comment will be removed.
 
 ## Change History
 
-### v1.0.0
+### v1.1.0
 
 * Initial Release
 

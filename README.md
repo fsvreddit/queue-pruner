@@ -4,8 +4,10 @@ The app can be configured to remove posts or comments for deleted users or shado
 
 ## Change History
 
-### v1.1.2
+### v1.2
 
+* Add ability to remove modqueued items from recently banned users
+* Add ability to lock removed items when removing from the modqueue
 * Reduce the chances of incorrect removals during periods of Reddit infrastructure instability
 * Update Devvit and dependencies
 * Job execution is staggered on different subreddits to reduce spikes in activity on Devvit infrastructure
@@ -16,4 +18,4 @@ The app can be configured to remove posts or comments for deleted users or shado
 
 ## About this app
 
-Modqueue Pruner is open source. You can find the source [here](https://github.com/fsvreddit/queue-pruner).
+Modqueue Pruner is open source. [You can find the source here](https://github.com/fsvreddit/queue-pruner).

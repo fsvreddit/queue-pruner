@@ -3,5 +3,3 @@ export enum ScheduledJob {
     PruneUsers = "pruneUsers",
     RemoveUsers = "removeUsers",
 }
-
-export const CHECK_QUEUE_CRON = "0/5 * * * *";

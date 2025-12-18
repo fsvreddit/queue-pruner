@@ -1,12 +1,44 @@
 import { JobContext, JSONObject, ScheduledJobEvent } from "@devvit/public-api";
-import { CronExpressionParser } from "cron-parser";
 import { addSeconds } from "date-fns";
 import { uniq } from "lodash";
-import { CHECK_QUEUE_CRON, ScheduledJob } from "./constants.js";
+import { ScheduledJob } from "./constants.js";
 import { AppSetting } from "./settings.js";
+import { isBanned } from "devvit-helpers";
+import { isLinkId } from "@devvit/public-api/types/tid.js";
+import pluralize from "pluralize";
 
 const USER_QUEUE_KEY = "userQueue";
 const REMOVE_QUEUE = "removeQueue";
+
+async function getPostOrCommentById (itemId: string, context: JobContext) {
+    if (isLinkId(itemId)) {
+        return context.reddit.getPostById(itemId);
+    } else {
+        return context.reddit.getCommentById(itemId);
+    }
+}
+
+async function removeItems (itemIds: string[], lock: boolean, replyComment: string | undefined, context: JobContext) {
+    await Promise.all(itemIds.map(item => context.reddit.remove(item, false)));
+
+    if (lock) {
+        await Promise.all(itemIds.map(async (itemId) => {
+            const item = await getPostOrCommentById(itemId, context);
+            await item.lock();
+        }));
+    }
+
+    if (replyComment && replyComment.trim().length > 0) {
+        for (const itemId of itemIds) {
+            const newComment = await context.reddit.submitComment({
+                id: itemId,
+                text: replyComment,
+            });
+            await newComment.distinguish();
+            await newComment.lock();
+        }
+    }
+}
 
 export async function checkQueue (_: unknown, context: JobContext) {
     const modQueue = await context.reddit.getModQueue({
@@ -26,12 +58,13 @@ export async function checkQueue (_: unknown, context: JobContext) {
         // Remove items from deleted users
         const itemsToRemove = modQueue.filter(item => item.authorName === "[deleted]");
         if (itemsToRemove.length > 0) {
-            await Promise.all(itemsToRemove.map(item => context.reddit.remove(item.id, false)));
-            console.log(`Check step: Removed ${itemsToRemove.length} item(s) from the mod queue due to deleted users.`);
+            const shouldLock = settings[AppSetting.LockOnRemove] as boolean | undefined ?? false;
+            await removeItems(itemsToRemove.map(item => item.id), shouldLock, undefined, context);
+            console.log(`Check step: Removed ${itemsToRemove.length} ${pluralize("item", itemsToRemove.length)} from the mod queue due to deleted users.`);
         }
     }
 
-    if (!settings[AppSetting.RemoveShadowbanned]) {
+    if (!settings[AppSetting.RemoveShadowbanned] && !settings[AppSetting.RemoveBanned]) {
         return;
     }
 
@@ -49,16 +82,19 @@ export async function checkQueue (_: unknown, context: JobContext) {
     }
 
     await context.redis.zAdd(USER_QUEUE_KEY, ...newUsers.map(user => ({ member: user, score: Date.now() })));
-    console.log(`Check step: Added ${newUsers.length} new user(s) to the queue.`);
+    console.log(`Check step: Added ${newUsers.length} new ${pluralize("user", newUsers.length)} to the queue.`);
 
     await context.scheduler.runJob({
         name: ScheduledJob.PruneUsers,
         runAt: addSeconds(new Date(), 5),
-        data: { runRemove: false },
+        data: {
+            firstRun: true,
+            runRemove: false,
+        },
     });
 }
 
-export async function userIsActive (username: string, context: JobContext): Promise<boolean> {
+async function userIsActive (username: string, context: JobContext): Promise<boolean> {
     try {
         const user = await context.reddit.getUserByUsername(username);
         return user !== undefined;
@@ -69,14 +105,23 @@ export async function userIsActive (username: string, context: JobContext): Prom
 }
 
 export async function pruneUsers (event: ScheduledJobEvent<JSONObject | undefined>, context: JobContext) {
+    const runRecentlyKey = "pruneUsersRecentlyRun";
+    if (event.data?.firstRun && await context.redis.get(runRecentlyKey)) {
+        return;
+    }
+
     let runRemove = event.data?.runRemove ?? false;
 
-    const runLimit = addSeconds(new Date(), 15);
+    const runLimit = addSeconds(new Date(), 10);
     const queue = await context.redis.zRange(USER_QUEUE_KEY, 0, -1);
 
     if (queue.length === 0) {
         return;
     }
+
+    await context.redis.set(runRecentlyKey, "", { expiration: addSeconds(new Date(), 30) });
+
+    const settings = await context.settings.getAll();
 
     let processed = 0;
     const processedUsers: string[] = [];
@@ -87,23 +132,36 @@ export async function pruneUsers (event: ScheduledJobEvent<JSONObject | undefine
             break;
         }
 
-        const isActive = await userIsActive(user.member, context);
         processedUsers.push(user.member);
         processed++;
 
-        if (!isActive) {
-            console.log(`Prune step: User ${user.member} is inactive, adding to remove queue.`);
-            await context.redis.zAdd(REMOVE_QUEUE, { member: user.member, score: Date.now() });
-            runRemove = true;
+        if (settings[AppSetting.RemoveShadowbanned]) {
+            const isActive = await userIsActive(user.member, context);
+
+            if (!isActive) {
+                console.log(`Prune step: User ${user.member} is shadowbanned/suspended, adding to remove queue.`);
+                await context.redis.zAdd(REMOVE_QUEUE, { member: user.member, score: Date.now() });
+                runRemove = true;
+                continue;
+            }
+        }
+
+        if (settings[AppSetting.RemoveBanned]) {
+            const subredditName = context.subredditName ?? await context.reddit.getCurrentSubredditName();
+            if (await isBanned(context.reddit, subredditName, user.member)) {
+                console.log(`Prune step: User ${user.member} is banned, adding to remove queue.`);
+                await context.redis.zAdd(REMOVE_QUEUE, { member: user.member, score: Date.now() });
+                runRemove = true;
+                continue;
+            }
         }
     }
 
     await context.redis.zRem(USER_QUEUE_KEY, processedUsers);
-    console.log(`Prune step: Processed ${processed} user(s) in the prune job.`);
+    console.log(`Prune step: Processed ${processed} ${pluralize("user", processed)} in the prune job.`);
 
-    const nextRun = CronExpressionParser.parse(CHECK_QUEUE_CRON).next().toDate();
-    if (queue.length > 0 && nextRun > addSeconds(new Date(), 45)) {
-        console.log(`Prune step: There are still ${queue.length} user(s) left in the queue.`);
+    if (queue.length > 0) {
+        console.log(`Prune step: ${queue.length} ${pluralize("user", queue.length)} left in the queue.`);
 
         await context.scheduler.runJob({
             name: ScheduledJob.PruneUsers,
@@ -115,6 +173,7 @@ export async function pruneUsers (event: ScheduledJobEvent<JSONObject | undefine
             name: ScheduledJob.RemoveUsers,
             runAt: addSeconds(new Date(), 5),
         });
+        await context.redis.del(runRecentlyKey);
     }
 }
 
@@ -122,6 +181,14 @@ export async function removeUsers (_: unknown, context: JobContext) {
     const removeQueue = await context.redis.zRange(REMOVE_QUEUE, 0, -1);
 
     if (removeQueue.length === 0) {
+        return;
+    }
+
+    // Retrieve app user - this is a proxy for checking platform stability.
+    try {
+        await context.reddit.getUserByUsername(context.appName);
+    } catch {
+        console.error("Remove step: Platform appears to be unstable, aborting remove operation.");
         return;
     }
 
@@ -133,8 +200,11 @@ export async function removeUsers (_: unknown, context: JobContext) {
 
     const itemsToRemove = modQueue.filter(item => removeQueue.some(user => user.member === item.authorName));
     if (itemsToRemove.length > 0) {
-        await Promise.all(itemsToRemove.map(item => context.reddit.remove(item.id, false)));
-        console.log(`Remove step: Removed ${itemsToRemove.length} item(s) from the mod queue for shadowbanned or suspended users.`);
+        const settings = await context.settings.getAll();
+        const shouldLock = settings[AppSetting.LockOnRemove] as boolean | undefined ?? false;
+        const replyComment = settings[AppSetting.ReplyCommentForShadowbanned] as string | undefined;
+        await removeItems(itemsToRemove.map(item => item.id), shouldLock, replyComment, context);
+        console.log(`Remove step: Removed ${itemsToRemove.length} ${pluralize("item", itemsToRemove.length)} from the mod queue for shadowbanned or suspended users.`);
     } else {
         console.log("Remove step: No items found in the mod queue for users to remove.");
     }

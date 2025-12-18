@@ -4,6 +4,12 @@ The app can be configured to remove posts or comments for deleted users or shado
 
 ## Change History
 
+### v1.1.2
+
+* Reduce the chances of incorrect removals during periods of Reddit infrastructure instability
+* Update Devvit and dependencies
+* Job execution is staggered on different subreddits to reduce spikes in activity on Devvit infrastructure
+
 ### v1.1.1
 
 * Initial Release

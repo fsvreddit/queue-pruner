@@ -1,9 +1,9 @@
 import { JobContext, JSONObject, ScheduledJobEvent } from "@devvit/public-api";
-import { CronExpressionParser } from "cron-parser";
 import { addSeconds } from "date-fns";
 import { uniq } from "lodash";
-import { CHECK_QUEUE_CRON, ScheduledJob } from "./constants.js";
+import { ScheduledJob } from "./constants.js";
 import { AppSetting } from "./settings.js";
+import { isBanned } from "devvit-helpers";
 
 const USER_QUEUE_KEY = "userQueue";
 const REMOVE_QUEUE = "removeQueue";
@@ -31,7 +31,7 @@ export async function checkQueue (_: unknown, context: JobContext) {
         }
     }
 
-    if (!settings[AppSetting.RemoveShadowbanned]) {
+    if (!settings[AppSetting.RemoveShadowbanned] && !settings[AppSetting.RemoveBanned]) {
         return;
     }
 
@@ -54,7 +54,10 @@ export async function checkQueue (_: unknown, context: JobContext) {
     await context.scheduler.runJob({
         name: ScheduledJob.PruneUsers,
         runAt: addSeconds(new Date(), 5),
-        data: { runRemove: false },
+        data: {
+            firstRun: true,
+            runRemove: false,
+        },
     });
 }
 
@@ -69,14 +72,23 @@ export async function userIsActive (username: string, context: JobContext): Prom
 }
 
 export async function pruneUsers (event: ScheduledJobEvent<JSONObject | undefined>, context: JobContext) {
+    const runRecentlyKey = "pruneUsersRecentlyRun";
+    if (event.data?.firstRun && await context.redis.get(runRecentlyKey)) {
+        return;
+    }
+
     let runRemove = event.data?.runRemove ?? false;
 
-    const runLimit = addSeconds(new Date(), 15);
+    const runLimit = addSeconds(new Date(), 10);
     const queue = await context.redis.zRange(USER_QUEUE_KEY, 0, -1);
 
     if (queue.length === 0) {
         return;
     }
+
+    await context.redis.set(runRecentlyKey, "", { expiration: addSeconds(new Date(), 30) });
+
+    const settings = await context.settings.getAll();
 
     let processed = 0;
     const processedUsers: string[] = [];
@@ -87,22 +99,35 @@ export async function pruneUsers (event: ScheduledJobEvent<JSONObject | undefine
             break;
         }
 
-        const isActive = await userIsActive(user.member, context);
         processedUsers.push(user.member);
         processed++;
 
-        if (!isActive) {
-            console.log(`Prune step: User ${user.member} is inactive, adding to remove queue.`);
-            await context.redis.zAdd(REMOVE_QUEUE, { member: user.member, score: Date.now() });
-            runRemove = true;
+        if (settings[AppSetting.RemoveShadowbanned]) {
+            const isActive = await userIsActive(user.member, context);
+
+            if (!isActive) {
+                console.log(`Prune step: User ${user.member} is shadowbanned/suspended, adding to remove queue.`);
+                await context.redis.zAdd(REMOVE_QUEUE, { member: user.member, score: Date.now() });
+                runRemove = true;
+                continue;
+            }
+        }
+
+        if (settings[AppSetting.RemoveBanned]) {
+            const subredditName = context.subredditName ?? await context.reddit.getCurrentSubredditName();
+            if (await isBanned(context.reddit, subredditName, user.member)) {
+                console.log(`Prune step: User ${user.member} is banned, adding to remove queue.`);
+                await context.redis.zAdd(REMOVE_QUEUE, { member: user.member, score: Date.now() });
+                runRemove = true;
+                continue;
+            }
         }
     }
 
     await context.redis.zRem(USER_QUEUE_KEY, processedUsers);
     console.log(`Prune step: Processed ${processed} user(s) in the prune job.`);
 
-    const nextRun = CronExpressionParser.parse(CHECK_QUEUE_CRON).next().toDate();
-    if (queue.length > 0 && nextRun > addSeconds(new Date(), 45)) {
+    if (queue.length > 0) {
         console.log(`Prune step: There are still ${queue.length} user(s) left in the queue.`);
 
         await context.scheduler.runJob({
@@ -115,6 +140,7 @@ export async function pruneUsers (event: ScheduledJobEvent<JSONObject | undefine
             name: ScheduledJob.RemoveUsers,
             runAt: addSeconds(new Date(), 5),
         });
+        await context.redis.del(runRecentlyKey);
     }
 }
 
@@ -122,6 +148,14 @@ export async function removeUsers (_: unknown, context: JobContext) {
     const removeQueue = await context.redis.zRange(REMOVE_QUEUE, 0, -1);
 
     if (removeQueue.length === 0) {
+        return;
+    }
+
+    // Retrieve app user - this is a proxy for checking platform stability.
+    try {
+        await context.reddit.getUserByUsername(context.appName);
+    } catch {
+        console.error("Remove step: Platform appears to be unstable, aborting remove operation.");
         return;
     }
 

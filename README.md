@@ -2,9 +2,11 @@ This app checks the modqueue every five minutes. If there are any posts or comme
 
 The app can be configured to remove posts or comments for deleted users or shadowbanned/suspended users - both options can be controlled independently.
 
+You can also choose to lock comments and posts removed from the queue, and in the case of suspended or shadowbanned users who had queue items you can also choose to reply to removed items with a comment, e.g. if you wish to advise the user of the Reddit appeals process.
+
 ## Change History
 
-### v1.2
+### v1.2.0
 
 * Add ability to remove modqueued items from recently banned users
 * Add ability to lock removed items when removing from the modqueue

@@ -36,7 +36,7 @@ export const appSettings: SettingsFormField[] = [
     {
         name: AppSetting.ReplyCommentForShadowbanned,
         type: "paragraph",
-        label: "If a user is found to be shadowbanned or suspended, reply to their content with this comment before removal.",
+        label: "If a user is found to be shadowbanned or suspended, reply to their content with this comment on removal.",
         helpText: "Leave blank to skip replying. Markdown is supported. You may wish to use this to alert users to the appeal process.",
     },
 ];

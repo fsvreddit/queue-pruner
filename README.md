@@ -6,7 +6,7 @@ You can also choose to lock comments and posts removed from the queue, and in th
 
 ## Change History
 
-### v1.2.1
+### v1.2.4
 
 * More robust checking of users - temporary errors will no longer cause active users to be removed from the queue.
 

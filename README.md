@@ -6,6 +6,10 @@ You can also choose to lock comments and posts removed from the queue, and in th
 
 ## Change History
 
+### v1.2.1
+
+* More robust checking of users - temporary errors will no longer cause active users to be removed from the queue.
+
 ### v1.2.0
 
 * Add ability to remove modqueued items from recently banned users

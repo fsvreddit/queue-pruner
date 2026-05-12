@@ -6,11 +6,12 @@ export async function handleInstallOrUpgrade (_: AppInstall | AppUpgrade, contex
     const jobs = await context.scheduler.listJobs();
     await Promise.all(jobs.map(job => context.scheduler.cancelJob(job.id)));
 
-    const randomMinute = Math.floor(Math.random() * 5);
+    const runFrequency = 2; // I.e. every two minutes
+    const randomMinute = Math.floor(Math.random() * runFrequency);
 
     await context.scheduler.runJob({
         name: ScheduledJob.CheckQueue,
-        cron: `${randomMinute}/5 * * * *`,
+        cron: `${randomMinute}/${runFrequency} * * * *`,
     });
 
     console.log("App installed or upgraded: scheduled jobs have been set up.");

@@ -75,7 +75,7 @@ export async function checkQueue (_: unknown, context: JobContext) {
     }
 
     const totalInQueue = await context.redis.zCard(USER_QUEUE_KEY);
-    console.log(`Check step: There are now ${totalInQueue} ${pluralize("user", totalInQueue)} in the queue.`);
+    console.log(`Check step: There ${pluralize("is", totalInQueue)} now ${totalInQueue} ${pluralize("user", totalInQueue)} in the queue.`);
 
     if (totalInQueue === 0) {
         console.log("Check step: No users in the queue after processing, skipping scheduling prune job.");

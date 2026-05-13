@@ -61,21 +61,26 @@ export async function checkQueue (_: unknown, context: JobContext) {
         return;
     }
 
-    const usersToQueue = uniq(modQueue
+    const usersInModqueue = uniq(modQueue
         .filter(item => item.authorName !== "[deleted]")
         .map(item => item.authorName));
 
-    const existingQueue = await context.redis.zRange(USER_QUEUE_KEY, 0, -1);
-    const existingUsers = new Set(existingQueue.map(user => user.member));
-    const newUsers = usersToQueue.filter(user => !existingUsers.has(user));
+    const existingCheckQueue = await context.redis.zRange(USER_QUEUE_KEY, 0, -1);
+    const existingUsers = new Set(existingCheckQueue.map(user => user.member));
+    const newUsers = usersInModqueue.filter(user => !existingUsers.has(user));
 
-    if (newUsers.length === 0) {
-        console.log("No new users to add to the queue.");
-        return;
+    if (newUsers.length > 0) {
+        await context.redis.zAdd(USER_QUEUE_KEY, ...newUsers.map(user => ({ member: user, score: Date.now() })));
+        console.log(`Check step: Added ${newUsers.length} new ${pluralize("user", newUsers.length)} to the queue.`);
     }
 
-    await context.redis.zAdd(USER_QUEUE_KEY, ...newUsers.map(user => ({ member: user, score: Date.now() })));
-    console.log(`Check step: Added ${newUsers.length} new ${pluralize("user", newUsers.length)} to the queue.`);
+    const totalInQueue = await context.redis.zCard(USER_QUEUE_KEY);
+    console.log(`Check step: There are now ${totalInQueue} ${pluralize("user", totalInQueue)} in the queue.`);
+
+    if (totalInQueue === 0) {
+        console.log("Check step: No users in the queue after processing, skipping scheduling prune job.");
+        return;
+    }
 
     await context.scheduler.runJob({
         name: ScheduledJob.PruneUsers,

@@ -6,6 +6,10 @@ You can also choose to lock comments and posts removed from the queue, and in th
 
 ## Change History
 
+### v1.2.5
+
+* Fixed an issue where a crash might result in checks not running until something new hits the modqueue
+
 ### v1.2.4
 
 * More robust checking of users - temporary errors will no longer cause active users to be removed from the queue.

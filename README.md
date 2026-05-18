@@ -4,7 +4,15 @@ The app can be configured to remove posts or comments for deleted users or shado
 
 You can also choose to lock comments and posts removed from the queue, and in the case of suspended or shadowbanned users who had queue items you can also choose to reply to removed items with a comment, e.g. if you wish to advise the user of the Reddit appeals process.
 
+Content by moderators will never be removed.
+
 ## Change History
+
+### v1.3
+
+* Added new option to remove queued comments from removed posts
+* Added new option to remove queued comments from deleted posts
+* Exempt all moderators from removal by this app (unless they have deleted their account)
 
 ### v1.2.5
 

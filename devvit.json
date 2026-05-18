@@ -5,7 +5,8 @@
         "entry": "src/main.ts",
         "triggers": [
             "onAppInstall",
-            "onAppUpgrade"
+            "onAppUpgrade",
+            "onModAction"
         ]
     }
 }

@@ -1,4 +1,4 @@
-import { JobContext, JSONObject, ScheduledJobEvent } from "@devvit/public-api";
+import { Comment, JobContext, JSONObject, Post, ScheduledJobEvent } from "@devvit/public-api";
 import { addHours, addSeconds } from "date-fns";
 import { uniq } from "lodash";
 import { ScheduledJob } from "./constants.js";
@@ -7,6 +7,7 @@ import { expireKeyAt, isBanned } from "devvit-helpers";
 import pluralize from "pluralize";
 import { getUserActiveStatus, UserActiveStatus } from "./userStatus.js";
 import { getPostOrCommentById } from "@fsvreddit/fsv-devvit-helpers";
+import { getCachedModeratorList } from "./modChecks.js";
 
 const USER_QUEUE_KEY = "userQueue";
 const REMOVE_QUEUE = "removeQueue";
@@ -22,10 +23,13 @@ async function removeItems (itemIds: string[], lock: boolean, replyComment: stri
     }
 
     if (replyComment && replyComment.trim().length > 0) {
+        const subredditName = context.subredditName ?? await context.reddit.getCurrentSubredditName();
+        const commentToAdd = replyComment + `\n\n*I am a bot, and this action was performed automatically. Please [contact the moderators of this subreddit](https://www.reddit.com/r/${subredditName}/about/moderators) if you have any questions or concerns.*`;
+
         for (const itemId of itemIds) {
             const newComment = await context.reddit.submitComment({
                 id: itemId,
-                text: replyComment,
+                text: commentToAdd,
             });
             await newComment.distinguish();
             await newComment.lock();
@@ -34,11 +38,13 @@ async function removeItems (itemIds: string[], lock: boolean, replyComment: stri
 }
 
 export async function checkQueue (_: unknown, context: JobContext) {
+    const knownModerators = await getCachedModeratorList(context);
+
     const modQueue = await context.reddit.getModQueue({
         subreddit: context.subredditName ?? await context.reddit.getCurrentSubredditName(),
         type: "all",
         limit: 1000,
-    }).all();
+    }).all().then(items => items.filter(item => !knownModerators.has(item.authorName)));
 
     if (modQueue.length === 0) {
         console.log("Check step: No items in the mod queue.");
@@ -54,6 +60,35 @@ export async function checkQueue (_: unknown, context: JobContext) {
             const shouldLock = settings[AppSetting.LockOnRemove] as boolean | undefined ?? false;
             await removeItems(itemsToRemove.map(item => item.id), shouldLock, undefined, context);
             console.log(`Check step: Removed ${itemsToRemove.length} ${pluralize("item", itemsToRemove.length)} from the mod queue due to deleted users.`);
+        }
+    }
+
+    if (settings[AppSetting.RemoveCommentsOnRemovedPosts] || settings[AppSetting.RemoveCommentsOnDeletedPosts]) {
+        const postsInQueue = new Set(modQueue.filter(item => item instanceof Post).map(item => item.id));
+        const uniquePosts = uniq(modQueue.filter(item => item instanceof Comment).filter(item => !postsInQueue.has(item.postId)).map(item => item.postId));
+        const postsToRemoveContentFrom = new Set<string>();
+
+        await Promise.all(uniquePosts.map(async (postId) => {
+            const post = await context.reddit.getPostById(postId);
+
+            if (settings[AppSetting.RemoveCommentsOnRemovedPosts]) {
+                const categoriesToRemove = ["author", "moderator", "anti_evil_ops", "community_ops", "content_takedown", "copyright_takedown"];
+                console.log(post.removedByCategory);
+                if (post.removedByCategory && categoriesToRemove.includes(post.removedByCategory)) {
+                    postsToRemoveContentFrom.add(postId);
+                }
+            }
+
+            if (settings[AppSetting.RemoveCommentsOnDeletedPosts] && post.authorName === "[deleted]") {
+                postsToRemoveContentFrom.add(postId);
+            }
+        }));
+
+        if (postsToRemoveContentFrom.size > 0) {
+            const shouldLock = settings[AppSetting.LockOnRemove] as boolean | undefined ?? false;
+            const itemsToRemove = modQueue.filter(item => item instanceof Comment && postsToRemoveContentFrom.has(item.postId));
+            await removeItems(itemsToRemove.map(item => item.id), shouldLock, undefined, context);
+            console.log(`Check step: Removed ${itemsToRemove.length} ${pluralize("comment", itemsToRemove.length)} from the mod queue due to removed or deleted posts.`);
         }
     }
 

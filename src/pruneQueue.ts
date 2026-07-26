@@ -1,12 +1,12 @@
 import { Comment, JobContext, JSONObject, Post, ScheduledJobEvent } from "@devvit/public-api";
-import { addHours, addSeconds } from "date-fns";
+import { addHours, addMinutes, addSeconds } from "date-fns";
 import { uniq } from "lodash";
 import { ScheduledJob } from "./constants.js";
 import { AppSetting } from "./settings.js";
 import { expireKeyAt, isBanned } from "devvit-helpers";
 import pluralize from "pluralize";
 import { getUserActiveStatus, UserActiveStatus } from "./userStatus.js";
-import { getPostOrCommentById } from "@fsvreddit/fsv-devvit-helpers";
+import { getPostOrCommentById, hasTriggerBeenHandled } from "@fsvreddit/fsv-devvit-helpers";
 import { getCachedModeratorList } from "./modChecks.js";
 
 const USER_QUEUE_KEY = "userQueue";
@@ -123,11 +123,18 @@ export async function checkQueue (_: unknown, context: JobContext) {
         data: {
             firstRun: true,
             runRemove: false,
+            jobGuid: crypto.randomUUID(),
         },
     });
 }
 
 export async function pruneUsers (event: ScheduledJobEvent<JSONObject | undefined>, context: JobContext) {
+    const jobGuid = event.data?.jobGuid as string | undefined;
+    if (jobGuid && await hasTriggerBeenHandled(context.redis, `job:${jobGuid}`, { expiration: addMinutes(new Date(), 5) })) {
+        console.warn(`Prune step: Job with guid ${jobGuid} has already been handled, skipping.`);
+        return;
+    }
+
     const runRecentlyKey = "pruneUsersRecentlyRun";
     if (event.data?.firstRun && await context.redis.get(runRecentlyKey)) {
         return;
@@ -205,18 +212,25 @@ export async function pruneUsers (event: ScheduledJobEvent<JSONObject | undefine
         await context.scheduler.runJob({
             name: ScheduledJob.PruneUsers,
             runAt: addSeconds(new Date(), 5),
-            data: { runRemove },
+            data: { runRemove, jobGuid: crypto.randomUUID() },
         });
     } else if (runRemove) {
         await context.scheduler.runJob({
             name: ScheduledJob.RemoveUsers,
             runAt: addSeconds(new Date(), 5),
+            data: { jobGuid: crypto.randomUUID() },
         });
         await context.redis.del(runRecentlyKey);
     }
 }
 
-export async function removeUsers (_: unknown, context: JobContext) {
+export async function removeUsers (event: ScheduledJobEvent<JSONObject | undefined>, context: JobContext) {
+    const jobGuid = event.data?.jobGuid as string | undefined;
+    if (jobGuid && await hasTriggerBeenHandled(context.redis, `job:${jobGuid}`, { expiration: addMinutes(new Date(), 5) })) {
+        console.warn(`Prune step: Job with guid ${jobGuid} has already been handled, skipping.`);
+        return;
+    }
+
     const removeQueue = await context.redis.zRange(REMOVE_QUEUE, 0, -1);
 
     if (removeQueue.length === 0) {

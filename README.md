@@ -8,6 +8,10 @@ Content by moderators will never be removed.
 
 ## Change History
 
+### v1.3.1
+
+* Mitigate against duplicate actions if Dev Platform is having issues
+
 ### v1.3
 
 * Added new option to remove queued comments from removed posts

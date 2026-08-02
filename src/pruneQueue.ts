@@ -40,7 +40,7 @@ async function removeItems (itemIds: string[], lock: boolean, replyComment: stri
 export async function checkQueue (_: unknown, context: JobContext) {
     const knownModerators = await getCachedModeratorList(context);
 
-    const modQueue = await context.reddit.getModQueue({
+    let modQueue = await context.reddit.getModQueue({
         subreddit: context.subredditName ?? await context.reddit.getCurrentSubredditName(),
         type: "all",
         limit: 1000,
@@ -53,13 +53,31 @@ export async function checkQueue (_: unknown, context: JobContext) {
 
     const settings = await context.settings.getAll();
 
+    const alreadyRemovedItems = new Set<string>();
+
     if (settings[AppSetting.RemoveDeleted]) {
         // Remove items from deleted users
         const itemsToRemove = modQueue.filter(item => item.authorName === "[deleted]");
         if (itemsToRemove.length > 0) {
             const shouldLock = settings[AppSetting.LockOnRemove] as boolean | undefined ?? false;
             await removeItems(itemsToRemove.map(item => item.id), shouldLock, undefined, context);
+            itemsToRemove.forEach(item => alreadyRemovedItems.add(item.id));
             console.log(`Check step: Removed ${itemsToRemove.length} ${pluralize("item", itemsToRemove.length)} from the mod queue due to deleted users.`);
+        }
+    }
+
+    if (alreadyRemovedItems.size > 0) {
+        modQueue = modQueue.filter(item => !alreadyRemovedItems.has(item.id));
+    }
+
+    if (settings[AppSetting.RemoveItemsRemovedByReddit]) {
+        // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
+        const itemsToRemove = modQueue.filter(item => item.body?.startsWith("[ Removed by Reddit") || ("title" in item && item.title.startsWith("[ Removed by Reddit")));
+        if (itemsToRemove.length > 0) {
+            const shouldLock = settings[AppSetting.LockOnRemove] as boolean | undefined ?? false;
+            await removeItems(itemsToRemove.map(item => item.id), shouldLock, undefined, context);
+            itemsToRemove.forEach(item => alreadyRemovedItems.add(item.id));
+            console.log(`Check step: Removed ${itemsToRemove.length} ${pluralize("item", itemsToRemove.length)} from the mod queue due to being removed by Reddit Legal or Anti-Evil Ops.`);
         }
     }
 

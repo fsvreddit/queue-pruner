@@ -8,6 +8,10 @@ Content by moderators will never be removed.
 
 ## Change History
 
+### v1.4.0
+
+* Add option to remove queued content that has been removed by Admin ([ Removed by Reddit ] comment or post bodies)
+
 ### v1.3.1
 
 * Mitigate against duplicate actions if Dev Platform is having issues

@@ -4,6 +4,7 @@ export enum AppSetting {
     RemoveDeleted = "removeDeleted",
     RemoveShadowbanned = "removeShadowbanned",
     RemoveBanned = "removeBanned",
+    RemoveItemsRemovedByReddit = "removeItemsRemovedByReddit",
     RemoveCommentsOnRemovedPosts = "removeCommentsOnRemovedPosts",
     RemoveCommentsOnDeletedPosts = "removeCommentsOnDeletedPosts",
     LockOnRemove = "lockOnRemove",
@@ -28,6 +29,13 @@ export const appSettings: SettingsFormField[] = [
         type: "boolean",
         defaultValue: false,
         label: "Remove modqueued content for banned users",
+    },
+    {
+        name: AppSetting.RemoveItemsRemovedByReddit,
+        type: "boolean",
+        defaultValue: false,
+        label: "Remove modqueued content removed by Reddit Legal or Anti-Evil Ops",
+        helpText: "This affects all [ Removed by Reddit ] posts and comments that are still in the mod queue.",
     },
     {
         name: AppSetting.RemoveCommentsOnRemovedPosts,

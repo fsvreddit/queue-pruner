@@ -8,6 +8,10 @@ Content by moderators will never be removed.
 
 ## Change History
 
+### v1.4.1
+
+* Prevent message that should only be left for suspended/shadowbanned users from appearing on comments or posts made by subreddit-banned users
+
 ### v1.4.0
 
 * Add option to remove queued content that has been removed by Admin ([ Removed by Reddit ] comment or post bodies)

@@ -1,4 +1,4 @@
-import { Comment, JobContext, JSONObject, Post, ScheduledJobEvent } from "@devvit/public-api";
+import { Comment, JobContext, JSONObject, ScheduledJobEvent } from "@devvit/public-api";
 import { addHours, addMinutes, addSeconds } from "date-fns";
 import { uniq } from "lodash";
 import { ScheduledJob } from "./constants.js";
@@ -8,9 +8,25 @@ import pluralize from "pluralize";
 import { getUserActiveStatus, UserActiveStatus } from "./userStatus.js";
 import { getPostOrCommentById, hasTriggerBeenHandled } from "@fsvreddit/fsv-devvit-helpers";
 import { getCachedModeratorList } from "./modChecks.js";
+import { isCommentId, isLinkId } from "@devvit/public-api/types/tid.js";
 
 const USER_QUEUE_KEY = "userQueue";
 const REMOVE_QUEUE = "removeQueue";
+
+function getRemovalReasonKeyForUsername (username: string) {
+    return `removalReason:${username}`;
+}
+
+async function storeRemovalReasonForUsername (username: string, reason: UserActiveStatus, context: JobContext) {
+    await context.redis.set(getRemovalReasonKeyForUsername(username), reason, { expiration: addHours(new Date(), 1) });
+}
+
+async function getRemovalReasonForUsername (username: string, context: JobContext): Promise<UserActiveStatus | undefined> {
+    const reason = await context.redis.get(getRemovalReasonKeyForUsername(username));
+    if (reason && Object.values(UserActiveStatus).includes(reason as UserActiveStatus)) {
+        return reason as UserActiveStatus;
+    }
+}
 
 async function removeItems (itemIds: string[], lock: boolean, replyComment: string | undefined, context: JobContext) {
     await Promise.all(itemIds.map(item => context.reddit.remove(item, false)));
@@ -27,12 +43,16 @@ async function removeItems (itemIds: string[], lock: boolean, replyComment: stri
         const commentToAdd = replyComment + `\n\n*I am a bot, and this action was performed automatically. Please [contact the moderators of this subreddit](https://www.reddit.com/r/${subredditName}/about/moderators) if you have any questions or concerns.*`;
 
         for (const itemId of itemIds) {
-            const newComment = await context.reddit.submitComment({
-                id: itemId,
-                text: commentToAdd,
-            });
-            await newComment.distinguish();
-            await newComment.lock();
+            const target = await getPostOrCommentById(context.reddit, itemId);
+            const removalReasonForUsername = await getRemovalReasonForUsername(target.authorName, context);
+            if (removalReasonForUsername === UserActiveStatus.Shadowbanned || removalReasonForUsername === UserActiveStatus.Suspended) {
+                const newComment = await context.reddit.submitComment({
+                    id: itemId,
+                    text: commentToAdd,
+                });
+                await newComment.distinguish();
+                await newComment.lock();
+            }
         }
     }
 }
@@ -82,8 +102,8 @@ export async function checkQueue (_: unknown, context: JobContext) {
     }
 
     if (settings[AppSetting.RemoveCommentsOnRemovedPosts] || settings[AppSetting.RemoveCommentsOnDeletedPosts]) {
-        const postsInQueue = new Set(modQueue.filter(item => item instanceof Post).map(item => item.id));
-        const uniquePosts = uniq(modQueue.filter(item => item instanceof Comment).filter(item => !postsInQueue.has(item.postId)).map(item => item.postId));
+        const postsInQueue = new Set(modQueue.filter(item => isLinkId(item.id)).map(item => item.id));
+        const uniquePosts = uniq(modQueue.filter(item => isCommentId(item.id)).map(item => item as Comment).filter(item => !postsInQueue.has(item.postId)).map(item => item.postId));
         const postsToRemoveContentFrom = new Set<string>();
 
         await Promise.all(uniquePosts.map(async (postId) => {
@@ -104,7 +124,7 @@ export async function checkQueue (_: unknown, context: JobContext) {
 
         if (postsToRemoveContentFrom.size > 0) {
             const shouldLock = settings[AppSetting.LockOnRemove] as boolean | undefined ?? false;
-            const itemsToRemove = modQueue.filter(item => item instanceof Comment && postsToRemoveContentFrom.has(item.postId));
+            const itemsToRemove = modQueue.filter(item => isCommentId(item.id) && "postId" in item && postsToRemoveContentFrom.has(item.postId));
             await removeItems(itemsToRemove.map(item => item.id), shouldLock, undefined, context);
             console.log(`Check step: Removed ${itemsToRemove.length} ${pluralize("comment", itemsToRemove.length)} from the mod queue due to removed or deleted posts.`);
         }
@@ -196,6 +216,7 @@ export async function pruneUsers (event: ScheduledJobEvent<JSONObject | undefine
                     // We've now had three checks of this user. Now queue for removal.
                     usersToRemoveFromQueue.add(user.member);
                     await context.redis.zAdd(REMOVE_QUEUE, { member: user.member, score: Date.now() });
+                    await storeRemovalReasonForUsername(user.member, userStatus, context);
                     console.log(`Prune step: User ${user.member} has been checked ${userCheckCount} times and is still ${userStatus}, adding to remove queue.`);
                     runRemove = true;
                 } else {

@@ -8,6 +8,10 @@ Content by moderators will never be removed.
 
 ## Change History
 
+### v1.4.2
+
+Fix bug that could result in queues not being pruned properly
+
 ### v1.4.1
 
 * Prevent message that should only be left for suspended/shadowbanned users from appearing on comments or posts made by subreddit-banned users

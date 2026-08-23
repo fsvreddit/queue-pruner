@@ -5,8 +5,8 @@
   "license": "BSD-3-Clause",
   "type": "module",
   "dependencies": {
-    "@devvit/protos": "0.14.0",
-    "@devvit/public-api": "0.14.0",
+    "@devvit/protos": "0.14.1",
+    "@devvit/public-api": "0.14.1",
     "@fsvreddit/fsv-devvit-helpers": "github:fsvreddit/fsv-devvit-helpers",
     "date-fns": "^4.1.0",
     "devvit-helpers": "^0.11.0",

@@ -81,7 +81,7 @@ export async function checkQueue () {
 
     if (appSettings[AppSetting.RemoveDeleted]) {
         // Remove items from deleted users
-        const itemsToRemove = modQueue.filter(item => item.authorName === "[deleted]" && item.userReportReasons.length === 0);
+        const itemsToRemove = modQueue.filter(item => item.authorName === "[deleted]" && item.userReportReasons.length === 0 && item.modReports.length === 0);
         if (itemsToRemove.length > 0) {
             const shouldLock = appSettings[AppSetting.LockOnRemove] as boolean | undefined ?? false;
             await removeItems(itemsToRemove.map(item => item.id), shouldLock, undefined);
@@ -249,6 +249,7 @@ export async function pruneUsers (event: TaskRequest<PruneUsersJobData | undefin
     if (usersToRemoveFromQueue.size > 0) {
         await redis.zRem(USER_QUEUE_KEY, Array.from(usersToRemoveFromQueue));
     }
+
     console.log(`Prune step: Processed ${processed} ${pluralize("user", processed)} in the prune job.`);
 
     if (queue.length > 0) {

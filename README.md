@@ -8,7 +8,7 @@ Content by moderators will never be removed.
 
 ## Change History
 
-### v1.5.0
+### v1.5.1
 
 * No longer removes content from users that was visible but reported and not filtered
 

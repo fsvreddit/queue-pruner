@@ -246,7 +246,9 @@ export async function pruneUsers (event: TaskRequest<PruneUsersJobData | undefin
         }
     }
 
-    await redis.zRem(USER_QUEUE_KEY, Array.from(usersToRemoveFromQueue));
+    if (usersToRemoveFromQueue.size > 0) {
+        await redis.zRem(USER_QUEUE_KEY, Array.from(usersToRemoveFromQueue));
+    }
     console.log(`Prune step: Processed ${processed} ${pluralize("user", processed)} in the prune job.`);
 
     if (queue.length > 0) {

@@ -1,12 +1,84 @@
 {
     "$schema": "https://developers.reddit.com/schema/config-file.v1.json",
     "name": "queue-pruner",
-    "blocks": {
-        "entry": "src/main.ts",
-        "triggers": [
-            "onAppInstall",
-            "onAppUpgrade",
-            "onModAction"
-        ]
+    "permissions": {
+        "reddit": true
+    },
+    "scripts": {
+        "build": "vite build",
+        "dev": "vite build --watch"
+    },
+    "server": {
+        "dir": "dist/server",
+        "entry": "index.cjs"
+    },
+    "settings": {
+        "subreddit": {
+            "removeDeleted": {
+                "type": "boolean",
+                "defaultValue": true,
+                "label": "Remove modqueued content for deleted users"
+            },
+            "removeShadowbanned": {
+                "type": "boolean",
+                "defaultValue": true,
+                "label": "Remove modqueued content for shadowbanned users"
+            },
+            "removeBanned": {
+                "type": "boolean",
+                "defaultValue": false,
+                "label": "Remove modqueued content for banned users"
+            },
+            "removeItemsRemovedByReddit": {
+                "type": "boolean",
+                "defaultValue": false,
+                "label": "Remove modqueued content removed by Reddit Legal or Anti-Evil Ops",
+                "helpText": "This affects all [ Removed by Reddit ] posts and comments that are still in the mod queue."
+            },
+            "removeCommentsOnRemovedPosts": {
+                "type": "boolean",
+                "defaultValue": false,
+                "label": "Remove modqueued comments on removed posts",
+                "helpText": "This will not take action on comments on posts filtered to the queue or removed by AutoModerator, only posts removed by moderators, Reddit Legal or Anti-Evil Ops."
+            },
+            "removeCommentsOnDeletedPosts": {
+                "type": "boolean",
+                "defaultValue": false,
+                "label": "Remove modqueued comments on deleted posts",
+                "helpText": "This will remove modqueued comments on any post that has been deleted, regardless of the reason for deletion."
+            },
+            "lockOnRemove": {
+                "type": "boolean",
+                "defaultValue": false,
+                "label": "Lock posts when removed",
+                "helpText": "Lock posts or comments when removing from modqueue"
+            },
+            "replyCommentForShadowbanned": {
+                "type": "paragraph",
+                "label": "If a user is found to be shadowbanned or suspended, reply to their content with this comment on removal",
+                "helpText": "Leave blank to skip replying. Markdown is supported. You may wish to use this to alert users to the appeal process."
+            }
+        }
+    },
+    "triggers": {
+        "onAppInstall": "/internal/triggers/app-install",
+        "onAppUpgrade": "/internal/triggers/app-upgrade",
+        "onModAction": "/internal/triggers/mod-action"
+    },
+    "scheduler": {
+        "tasks": {
+            "checkQueue": {
+                "endpoint": "/internal/tasks/check-queue"
+            },
+            "pruneUsers": {
+                "endpoint": "/internal/tasks/prune-users"
+            },
+            "removeUsers": {
+                "endpoint": "/internal/tasks/remove-users"
+            },
+            "refreshModeratorList": {
+                "endpoint": "/internal/tasks/refresh-moderator-list"
+            }
+        }
     }
 }

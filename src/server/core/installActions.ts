@@ -1,16 +1,15 @@
-import { AppInstall, AppUpgrade } from "@devvit/protos";
-import { TriggerContext } from "@devvit/public-api";
-import { ScheduledJob } from "./constants.js";
+import { context, scheduler } from "@devvit/web/server";
+import { ScheduledJob } from ".";
 import { addSeconds } from "date-fns";
 
-export async function handleInstallOrUpgrade (_: AppInstall | AppUpgrade, context: TriggerContext) {
-    const jobs = await context.scheduler.listJobs();
-    await Promise.all(jobs.map(job => context.scheduler.cancelJob(job.id)));
+export async function handleInstallOrUpgrade () {
+    const jobs = await scheduler.listJobs();
+    await Promise.all(jobs.map(job => scheduler.cancelJob(job.id)));
 
     const runFrequency = 2; // I.e. every two minutes
     let randomMinute = Math.floor(Math.random() * runFrequency);
 
-    await context.scheduler.runJob({
+    await scheduler.runJob({
         name: ScheduledJob.CheckQueue,
         cron: `${randomMinute}/${runFrequency} * * * *`,
     });
@@ -18,12 +17,12 @@ export async function handleInstallOrUpgrade (_: AppInstall | AppUpgrade, contex
     randomMinute = Math.floor(Math.random() * 60);
     const randomHour = Math.floor(Math.random() * 24);
 
-    await context.scheduler.runJob({
+    await scheduler.runJob({
         name: ScheduledJob.RefreshModeratorList,
         cron: `${randomMinute} ${randomHour} * * *`,
     });
 
-    await context.scheduler.runJob({
+    await scheduler.runJob({
         name: ScheduledJob.RefreshModeratorList,
         runAt: addSeconds(new Date(), 5),
     });

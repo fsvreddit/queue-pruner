@@ -1,5 +1,5 @@
-import { TriggerContext } from "@devvit/public-api";
-import { getUserExtended } from "@fsvreddit/fsv-devvit-helpers";
+import { context, reddit } from "@devvit/web/server";
+import { getUserExtended } from "@fsvreddit/fsv-devvit-web-helpers";
 
 export enum UserActiveStatus {
     Active = "active",
@@ -8,8 +8,8 @@ export enum UserActiveStatus {
     Shadowbanned = "shadowbanned",
 }
 
-export async function getUserActiveStatus (username: string, context: TriggerContext): Promise<UserActiveStatus> {
-    const user = await getUserExtended(username, context);
+export async function getUserActiveStatus (username: string): Promise<UserActiveStatus> {
+    const user = await getUserExtended(username);
     if (user?.isSuspended) {
         return UserActiveStatus.Suspended;
     }
@@ -24,9 +24,9 @@ export async function getUserActiveStatus (username: string, context: TriggerCon
      * users can be retrieved, but deleted users will return an error.
      *
      * */
-    const subredditName = context.subredditName ?? await context.reddit.getCurrentSubredditName();
+    const subredditName = context.subredditName;
     try {
-        await context.reddit.getModNotes({
+        await reddit.getModNotes({
             subreddit: subredditName,
             user: username,
         }).all();

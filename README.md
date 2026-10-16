@@ -8,6 +8,10 @@ Content by moderators will never be removed.
 
 ## Change History
 
+### v1.5.0
+
+* No longer removes content from users that was visible but reported and not filtered
+
 ### v1.4.1
 
 * Prevent message that should only be left for suspended/shadowbanned users from appearing on comments or posts made by subreddit-banned users
